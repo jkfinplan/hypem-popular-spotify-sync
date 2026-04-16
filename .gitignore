@@ -1,0 +1,12 @@
+# Local secrets — never commit
+.env
+
+# Python venv (local only)
+.venv/
+
+# Runtime data: Spotify token cache lives here — never commit
+data/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
