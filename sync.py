@@ -86,13 +86,32 @@ def resolve_spotify_uris(sp: spotipy.Spotify, tracks: list[dict]) -> list[str]:
     return uris
 
 
-def sync_playlist(sp: spotipy.Spotify, playlist_id: str, track_uris: list[str]) -> None:
-    # Spotify's replace endpoint accepts max 100 tracks; we have ≤50 so one call is fine
-    sp.playlist_replace_items(playlist_id, track_uris)
+def sync_playlist(sp: spotipy.Spotify, playlist_id: str, track_uris: list[str]) -> int:
+    """Replace the whole playlist. Requires spotipy>=2.26 (uses PUT .../items, not deprecated /tracks)."""
+    me = sp.current_user()
+    pl = sp.playlist(playlist_id, fields="id,name,owner(id)")
+    owner_id = pl["owner"]["id"]
+    if owner_id != me["id"]:
+        raise PermissionError(
+            f"Playlist is owned by {owner_id!r} but token is for {me['id']!r} "
+            f"({me.get('display_name', '')}) — fix SPOTIFY_PLAYLIST_ID in .env"
+        )
+
+    # Spotify rejects duplicate URIs in one replace call
+    seen: set[str] = set()
+    uris: list[str] = []
+    for u in track_uris:
+        if u not in seen:
+            seen.add(u)
+            uris.append(u)
+
+    sp.playlist_replace_items(playlist_id, uris)
+    return len(uris)
 
 
 def run_sync() -> None:
-    playlist_id = os.environ["SPOTIFY_PLAYLIST_ID"]
+    # Strip accidental quotes from .env (common with vim); breaks Spotify API if left in.
+    playlist_id = os.environ["SPOTIFY_PLAYLIST_ID"].strip().strip("'\"")
     log.info("=== Sync run started ===")
 
     try:
@@ -115,8 +134,8 @@ def run_sync() -> None:
         return
 
     try:
-        sync_playlist(sp, playlist_id, track_uris)
-        log.info("Playlist updated successfully with %d tracks", len(track_uris))
+        n = sync_playlist(sp, playlist_id, track_uris)
+        log.info("Playlist updated successfully with %d tracks", n)
     except Exception as exc:
         log.error("Spotify playlist update failed: %s", exc)
         return
@@ -126,8 +145,9 @@ def run_sync() -> None:
 
 def main() -> None:
     log.info(
-        "Hype Machine → Spotify sync service starting (interval: %dh)",
+        "Hype Machine → Spotify sync starting (interval: %dh, spotipy %s)",
         SYNC_INTERVAL_SECONDS // 3600,
+        spotipy.__version__,
     )
     while True:
         run_sync()
