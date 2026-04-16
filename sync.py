@@ -1,3 +1,4 @@
+import importlib.metadata
 import os
 import time
 import logging
@@ -147,7 +148,7 @@ def main() -> None:
     log.info(
         "Hype Machine → Spotify sync starting (interval: %dh, spotipy %s)",
         SYNC_INTERVAL_SECONDS // 3600,
-        spotipy.__version__,
+        importlib.metadata.version("spotipy"),
     )
     while True:
         run_sync()
